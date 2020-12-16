@@ -60,25 +60,34 @@ class Apollogize:
         )
         return resp_pass.cookies
 
-    def do_recheckin(self, att_type: int, work_dt: str, hour: str):
-        att_time = f'{work_dt}T{hour:02d}:{randint(0, 30):02d}:00+00:00'
+    def do_recheckin(self, att_type: int, dt: pendulum.datetime, hour: int):
+        dt = dt.add(hours=hour)
+
+        if att_type == 1:
+            att = dt.add(minutes=randint(0, 30))
+        else:
+            att = dt.add(minutes=randint(31, 59))
+
         resp = requests.post(
             url='https://pt.mayohr.com/api/reCheckInApproval',
             cookies=self.__cookies,
             data={
-                'AttendanceOn': att_time,
+                'AttendanceOn': att.to_datetime_string(),
                 'AttendanceType': att_type,
-                'PunchesLocationId': self.PUNCHES_LOCATION_ID,
                 'IsBehalf': False,
+                'PunchesLocationId': self.PUNCHES_LOCATION_ID,
             },
         )
 
         time.sleep(2)
+
         err = resp.json().get('Error', {}).get('Title')
         if resp.status_code == 200:
-            LOGGER.info("%s att_type=%s success!", att_time, att_type)
+            LOGGER.info("%s att_type=%s success!", att.to_datetime_string(), att_type)
+        elif resp.status_code == 400 and 'record of the day has existed' in err:
+            LOGGER.info('%s: %s', att.to_datetime_string(), err)
         else:
-            LOGGER.error("%s (code=%d, err=%s)", att_time, resp.status_code, err)
+            LOGGER.error("%s (code=%d, err=%s)", att.to_datetime_string(), resp.status_code, err)
             raise Exception(err)
 
     def get_work_dates(self, dt: pendulum.datetime):
@@ -104,8 +113,6 @@ class Apollogize:
                 yield dobj, shour, ehour
                 continue
 
-            print(leaves)
-
             leave_start = pendulum.parse(leaves[0]['LeaveStartDatetime'])
             leave_end = pendulum.parse(leaves[0]['LeaveEndDatetime'])
             adjust_work_hour = set(range(2, 12)).difference(
@@ -124,10 +131,11 @@ class Apollogize:
                 try:
                     self.do_recheckin(1, d, shour)  # recheckin work on
                     self.do_recheckin(2, d, ehour)  # recheckin work off
-                except Exception:
-                    self.fails.append(d)
+                except Exception as e:
+                    LOGGER.error(e)
+                    self.fails.append(d.to_date_string())
                 else:
-                    LOGGER.info('Apollogize successfully %s', d)
+                    LOGGER.info('Apollogize successfully %s', d.to_date_string())
 
 
 if __name__ == '__main__':
