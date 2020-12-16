@@ -5,7 +5,6 @@
 import argparse
 import logging
 import time
-from datetime import datetime
 from random import randint
 
 import pendulum
@@ -24,22 +23,21 @@ class Apollogize:
     COMPANY_ID = 'bb04f185-9731-4348-a0e0-6834fe5dff58'
     PUNCHES_LOCATION_ID = 'e506b866-49f3-4c47-a324-cd8c4fa7b580'
 
-    def __init__(self, username, password, starting_dt):
-        self.cookies = self.gen_cookies(username, password)
-        self.starting_dt = starting_dt
-        self.fail_dts = list()
+    def __init__(self, username, password, sdt, edt):
+        self.__cookies = self.gen_cookies(username, password)
+        self.__sdt = sdt
+        self.__edt = edt
+        self.__fails = list()
 
     @property
     def success(self):
-        return not self.fail_dts
+        return not self.__fails
 
     @property
-    def fail_dts(self):
-        return self.fail_dts
+    def fails(self):
+        return self.__fails
 
-    def gen_cookies(
-        self, username, password
-    ) -> requests.cookies.RequestsCookieJar:
+    def gen_cookies(self, username, password) -> requests.cookies.RequestsCookieJar:
         resp_token = requests.post(
             url='https://auth.mayohr.com/Token',
             data={
@@ -66,7 +64,7 @@ class Apollogize:
         att_time = f'{work_dt}T{hour:02d}:{randint(0, 30):02d}:00+00:00'
         resp = requests.post(
             url='https://pt.mayohr.com/api/reCheckInApproval',
-            cookies=self.cookies,
+            cookies=self.__cookies,
             data={
                 'AttendanceOn': att_time,
                 'AttendanceType': att_type,
@@ -78,71 +76,77 @@ class Apollogize:
         time.sleep(2)
         err = resp.json().get('Error', {}).get('Title')
         if resp.status_code == 200:
-            LOGGER.INFO(f'{att_time} att_type={att_type} success!')
+            LOGGER.info("%s att_type=%s success!", att_time, att_type)
         else:
-            LOGGER.ERROR(f'{att_time} (code={resp.status_code}, err={err})')
+            LOGGER.error("%s (code=%d, err=%s)", att_time, resp.status_code, err)
             raise Exception(err)
 
-    def get_work_dates(self, dt: pendulum.datetime.DateTime):
+    def get_work_dates(self, dt: pendulum.datetime):
         resp = requests.get(
             url='https://pt.mayohr.com/api/EmployeeCalendars/scheduling',
             params={'year': dt.year, 'month': dt.month},
-            cookies=self.cookies,
+            cookies=self.__cookies,
         )
-        for dt_cal in resp.json()['Data']['Calendars']:
-            work_dt = datetime.strptime(dt_cal['Date'][:10], '%Y-%m-%d')
-            is_valid_dt = work_dt <= datetime.now() and dt['ShiftSchedule']
-            exist_leave = False if dt_cal['LeaveSheets'] else True
-            is_work_day = dt_cal['ShiftSchedule']['WorkOnTime'] is not None
-            is_in_range = dt_cal >= self.starting_dt
+        for d in resp.json()['Data']['Calendars']:
+            dobj = pendulum.parse(d['Date'])
+            schedule = d.get('ShiftSchedule')
+            leaves = d.get('LeaveSheets')
 
-            if is_valid_dt and is_work_day and is_in_range:
-                s_hour = 2  # 10 AM in Taipei time
-                e_hour = 11  # 7 PM in Taipei time
-                if exist_leave:
-                    leave_start = pendulum.parse(dt_cal['LeaveSheets'][0]['LeaveStartDatetime'])
-                    leave_end = pendulum.parse(dt_cal['LeaveSheets'][0]['LeaveEndDatetime'])
-                    adjust_work_hour = set(range(2, 12)).difference(
-                        set(range(leave_start.hour, leave_end.hour + 1))
-                    )
-                    if adjust_work_hour:
-                        LOGGER.INFO(
-                            f'leave on {work_dt}, start={leave_start.time()}, end={leave_end.time()}'
-                        )
-                        yield dt_cal, min(adjust_work_hour), max(adjust_work_hour)
+            valid = self.__sdt <= dobj <= pendulum.now() and schedule.get('WorkOnTime')
 
-                yield dt_cal, s_hour, e_hour
+            if not valid:
+                continue
 
-    def process(self, dt: pendulum.datetime.DateTime):
-        for dt, s_hour, e_hour in self.get_work_dates(dt):
-            try:
-                self.do_recheckin(1, dt, s_hour)  # recheckin work on
-                self.do_recheckin(2, dt, e_hour)  # recheckin work off
-            except:
-                self.fail_dts.append(dt)
+            shour = 2  # 10 AM in Taipei time
+            ehour = 11  # 7 PM in Taipei time
+
+            if not leaves:
+                yield dobj, shour, ehour
+                continue
+
+            print(leaves)
+
+            leave_start = pendulum.parse(leaves[0]['LeaveStartDatetime'])
+            leave_end = pendulum.parse(leaves[0]['LeaveEndDatetime'])
+            adjust_work_hour = set(range(2, 12)).difference(
+                set(range(leave_start.hour, leave_end.hour + 1))
+            )
+
+            if adjust_work_hour:
+                LOGGER.info(
+                    "leave on %s, start=%s, end=%s", dobj, leave_start.time(), leave_end.time()
+                )
+                yield dobj, min(adjust_work_hour), max(adjust_work_hour)
+
+    def process(self):
+        for dt_month in pendulum.period(self.__sdt, self.__edt).range('months'):
+            for d, shour, ehour in self.get_work_dates(dt_month):
+                try:
+                    self.do_recheckin(1, d, shour)  # recheckin work on
+                    self.do_recheckin(2, d, ehour)  # recheckin work off
+                except Exception:
+                    self.fails.append(d)
+                else:
+                    LOGGER.info('Apollogize successfully %s', d)
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--username', '-u', required=True)
     parser.add_argument('--password', '-p', required=True)
-    parser.add_argument('--starting_dt', '-s')
+    parser.add_argument('--sdt', '-s')
+    parser.add_argument('--edt', '-e')
     args = parser.parse_args()
 
-    start = pendulum.now().first_of('year')
-    end = pendulum.now()
+    start = pendulum.parse(args.sdt) if args.sdt else pendulum.now().first_of('year')
+    end = pendulum.parse(args.edt) if args.edt else pendulum.now()
     aplo = Apollogize(
-        username=f'{args.username}@gogolook.com',
-        password=args.password,
-        starting_dt=pendulum.parse(args.starting_dt) if args.starting_dt else start.to_date_string(),
+        username=f'{args.username}@gogolook.com', password=args.password, sdt=start, edt=end
     )
 
-    for dt_month in pendulum.period(start, end).range('months'):
-        aplo.process(dt_month)
+    aplo.process()
 
-    # if aplo.success:
-    #     LOGGER.INFO('Success!')
-    # else:
-    #     LOGGER.ERROR(
-    #         f"Please double check following data: {', '.join(aplo.fail_dts)}"
-    #     )
+    if aplo.success:
+        LOGGER.info('Success!')
+    else:
+        LOGGER.error("Please double check following data: %s", ', '.join(aplo.fails))
