@@ -1,6 +1,6 @@
 '''
     Usage:
-        python3.7 apollogize.py <user_name> <password> (<on_broad_data>)
+        python apollogize.py <user_name> <password> (<start_date>)
 '''
 import argparse
 import logging
