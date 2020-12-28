@@ -1,6 +1,6 @@
 '''
     Usage:
-        python apollogize.py <user_name> <password> (<start_date>)
+        python apollogize.py -u <user_name> -p <password> (-s <start_date>) (-e <end_date>)
 '''
 import argparse
 import logging
