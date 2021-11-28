@@ -1,5 +1,5 @@
 # Apollogize
-
+Apollogize is a command line tool which assists the employers who forgot to check-in and check-out in Apollo app.
 
 ### Installation (Mac)
 ```

@@ -19,15 +19,13 @@ LOGGER = logging.getLogger(__file__)
 
 
 class Apollogize:
-
-    COMPANY_ID = 'bb04f185-9731-4348-a0e0-6834fe5dff58'
-    PUNCHES_LOCATION_ID = 'e506b866-49f3-4c47-a324-cd8c4fa7b580'
-
-    def __init__(self, username, password, sdt, edt):
+    def __init__(self, username, password, sdt, edt, company_id, punches_location_id):
         self.__cookies = self.gen_cookies(username, password)
         self.__sdt = sdt
         self.__edt = edt
         self.__fails = list()
+        self.__company_id = company_id
+        self.__punches_location_id = punches_location_id
 
     @property
     def success(self):
@@ -55,7 +53,7 @@ class Apollogize:
             url='https://authcommon.mayohr.com/api/auth/checkticket',
             params={
                 'code': resp_token.json()['code'],
-                'CompanyId': self.COMPANY_ID,
+                'CompanyId': self.__company_id,
             },
         )
         return resp_pass.cookies
@@ -75,7 +73,7 @@ class Apollogize:
                 'AttendanceOn': att.to_datetime_string(),
                 'AttendanceType': att_type,
                 'IsBehalf': False,
-                'PunchesLocationId': self.PUNCHES_LOCATION_ID,
+                'PunchesLocationId': self.__punches_location_id,
             },
         )
 
@@ -83,11 +81,11 @@ class Apollogize:
 
         err = resp.json().get('Error', {}).get('Title')
         if resp.status_code == 200:
-            LOGGER.info("%s att_type=%s success!", att.to_datetime_string(), att_type)
+            LOGGER.info('%s att_type=%s success!', att.to_datetime_string(), att_type)
         elif resp.status_code == 400 and 'record of the day has existed' in err:
             LOGGER.info('%s: %s', att.to_datetime_string(), err)
         else:
-            LOGGER.error("%s (code=%d, err=%s)", att.to_datetime_string(), resp.status_code, err)
+            LOGGER.error('%s (code=%d, err=%s)', att.to_datetime_string(), resp.status_code, err)
             raise Exception(err)
 
     def get_work_dates(self, dt: pendulum.datetime):
@@ -121,7 +119,7 @@ class Apollogize:
 
             if adjust_work_hour:
                 LOGGER.info(
-                    "leave on %s, start=%s, end=%s", dobj, leave_start.time(), leave_end.time()
+                    'leave on %s, start=%s, end=%s', dobj, leave_start.time(), leave_end.time()
                 )
                 yield dobj, min(adjust_work_hour), max(adjust_work_hour)
 
@@ -138,18 +136,25 @@ class Apollogize:
                     LOGGER.info('Apollogize successfully %s', d.to_date_string())
 
 
-if __name__ == '__main__':
+def entry():
     parser = argparse.ArgumentParser()
     parser.add_argument('--username', '-u', required=True)
     parser.add_argument('--password', '-p', required=True)
     parser.add_argument('--sdt', '-s')
     parser.add_argument('--edt', '-e')
+    parser.add_argument('--company_id', '-c')
+    parser.add_argument('--punches_location_id', '-l')
     args = parser.parse_args()
 
     start = pendulum.parse(args.sdt) if args.sdt else pendulum.now().first_of('year')
     end = pendulum.parse(args.edt) if args.edt else pendulum.now()
     aplo = Apollogize(
-        username=f'{args.username}@gogolook.com', password=args.password, sdt=start, edt=end
+        username=f'{args.username}@gogolook.com',
+        password=args.password,
+        sdt=start,
+        edt=end,
+        company_id=args.company_id,
+        punches_location_id=args.punches_location_id,
     )
 
     aplo.process()
@@ -157,4 +162,4 @@ if __name__ == '__main__':
     if aplo.success:
         LOGGER.info('Success!')
     else:
-        LOGGER.error("Please double check following data: %s", ', '.join(aplo.fails))
+        LOGGER.error('Please double check following data: %s', ', '.join(aplo.fails))
