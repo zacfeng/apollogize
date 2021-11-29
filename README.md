@@ -1,9 +1,8 @@
 # Apollogize
----
 Apollogize is a command line tool which assists the employers who forgot to check-in and check-out in Apollo HR app.
 
 ## Installation
-Simply use pip to install Apollogize package
+It's available on pypi, simply use pip to install Apollogize package.
 ```bash
 pip install apollogize
 ```

@@ -3,6 +3,8 @@ import pathlib
 import pkg_resources
 import setuptools
 
+from version import __version__
+
 with pathlib.Path('pip-requirements.txt').open() as requirements_txt:
     install_requires = [
         str(requirement)
@@ -15,7 +17,7 @@ with open('README.md', 'r') as fh:
 
 setuptools.setup(
     name='apollogize',
-    version='0.0.3',
+    version=__version__,
     author='Zac Chien',
     author_email='fengying0709@gmail.com',
     url='https://github.com/zacfeng/Apollogize',
