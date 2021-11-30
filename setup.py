@@ -3,7 +3,7 @@ import pathlib
 import pkg_resources
 import setuptools
 
-from version import __version__
+from apollogize.version import __version__
 
 with pathlib.Path('pip-requirements.txt').open() as requirements_txt:
     install_requires = [

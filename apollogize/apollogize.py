@@ -9,7 +9,7 @@ from prompt_toolkit import print_formatted_text, prompt
 from prompt_toolkit.completion import WordCompleter
 from prompt_toolkit.formatted_text import FormattedText
 from prompt_toolkit.validation import Validator
-from version import __version__
+from apollogize.version import __version__
 
 logging.basicConfig(
     level=logging.INFO,
