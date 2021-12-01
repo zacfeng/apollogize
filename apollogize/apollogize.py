@@ -54,7 +54,7 @@ class Apollogize:
 
         if resp.status_code != 200:
             print(resp.json())
-            exit(2)
+            exit(1)
 
         resp_pass = requests.get(
             url='https://authcommon.mayohr.com/api/auth/checkticket',
@@ -125,7 +125,7 @@ class Apollogize:
             },
         )
 
-        time.sleep(1)
+        time.sleep(2)
 
         err = resp.json().get('Error', {}).get('Title')
         if resp.status_code == 200:
@@ -156,7 +156,6 @@ class Apollogize:
 
 def is_valid_username(username) -> bool:
     import re
-
     regex = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
     if re.fullmatch(regex, username):
         return True
@@ -192,17 +191,18 @@ def entry():
 
     start_of_year = pendulum.now().first_of('year').to_date_string()
     start_of_month = pendulum.now().first_of('month').to_date_string()
+    end_of_month = pendulum.now().end_of('month').to_date_string()
     today = pendulum.now().to_date_string()
     end_of_year = pendulum.now().end_of('year').to_date_string()
 
     sdt_prompt = FormattedText(
-        [('ansiyellow', '3. Start date(leave onboard day if you are new this year): ')]
+        [('ansiyellow', '3. Start date (YYYY-MM-DD, fill onboard date if you are a new gogolooker this year): ')]
     )
     sdt_completer = WordCompleter([start_of_year, start_of_month, today])
     sdt = prompt(sdt_prompt, completer=sdt_completer)
 
-    edt_prompt = FormattedText([('ansiyellow', '4. End date: ')])
-    edt_completer = WordCompleter([today, end_of_year])
+    edt_prompt = FormattedText([('ansiyellow', '4. End date (YYYY-MM-DD): ')])
+    edt_completer = WordCompleter([today, end_of_month, end_of_year])
     edt = prompt(edt_prompt, completer=edt_completer)
 
     company_id_prompt = FormattedText([('ansiyellow', '5. Your company id: ')])
